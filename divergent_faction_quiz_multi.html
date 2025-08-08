@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Divergent Faction Quiz — Multi-Select (% Breakdown)</title>
+<style>
+  :root { --bg:#0f1216; --card:#171b21; --text:#e9eef5; --muted:#9aa7b8; --accent:#4aa3ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:24px 20px 8px; text-align:center; }
+  header h1 { margin:0; font-size:clamp(20px, 3.5vw, 28px); }
+  header p { margin:6px 0 0; color:var(--muted); }
+  main { max-width:950px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid #242a33; border-radius:14px; padding:18px; margin:14px 0; }
+  .pill { padding:6px 10px; background:#232b37; border:1px solid #2f3948; border-radius:999px; font-size:12px; color:#cfd9e6; }
+  .meta { display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:14px; color:var(--muted); }
+  .q { margin:0 0 12px; font-weight:600; }
+  .options { display:grid; gap:8px; }
+  .opt { display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid #2a3240; border-radius:10px; cursor:pointer; }
+  .opt:hover { border-color:#3a4557; background:#1b2027; }
+  .opt input { margin-top:3px; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; }
+  button { background:var(--accent); color:#001428; border:none; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; }
+  button.secondary { background:#2a3240; color:var(--text); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .results { display:none; }
+  .bars { display:grid; gap:10px; }
+  .bar { display:grid; grid-template-columns: 120px 1fr 70px; gap:10px; align-items:center; }
+  .bar .label { color:#cfd9e6; font-weight:600; }
+  .bar .track { height:14px; background:#222b36; border-radius:999px; overflow:hidden; border:1px solid #2d3644; }
+  .bar .fill { height:100%; width:0%; background:linear-gradient(90deg, #4aa3ff, #6ed0ff); }
+  .bar .pct { text-align:right; color:#cfd9e6; font-variant-numeric: tabular-nums; }
+  .note { color:var(--muted); font-size:14px; }
+  .footer { text-align:center; color:var(--muted); font-size:12px; padding:14px 0 28px; }
+  .warn { color:#ffcf6e; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Divergent Faction Quiz — Multi‑Select</h1>
+  <p>Pick <b>up to 2 answers per question</b> if more than one fits. Scoring splits 1 point across your selections per question.</p>
+</header>
+<main>
+  <div class="card meta">
+    <span class="pill">30 questions</span>
+    <span class="pill">~6–9 minutes</span>
+    <span class="pill">Multi‑select (max 2)</span>
+    <span class="pill">Runs offline</span>
+  </div>
+
+  <form id="quiz"></form>
+
+  <div class="card btns">
+    <button id="submitBtn" type="button">See My Results</button>
+    <button id="resetBtn" type="button" class="secondary">Reset</button>
+    <span class="note" id="helper"></span>
+  </div>
+
+  <section id="results" class="card results">
+    <h2 style="margin-top:0">Your Faction Mix</h2>
+    <div class="bars" id="bars"></div>
+    <p class="note" id="divergence"></p>
+    <div id="primaryFaction" class="note"></div>
+  </section>
+
+  <div class="footer">Made for fun & self-reflection. Not affiliated with the Divergent franchise.</div>
+</main>
+
+<script>
+const FACTIONS = ["Abnegation","Dauntless","Erudite","Amity","Candor"];
+const factionByChoice = { A:"Abnegation", B:"Dauntless", C:"Erudite", D:"Amity", E:"Candor" };
+
+const QUESTIONS = [
+  {q:"You find a lost wallet. First move?", a:[
+    ["Return it quietly, owner first.","A"],
+    ["Scan area, then act. Safety matters.","B"],
+    ["Check for ID and contact details.","C"],
+    ["Leave a kind note and secure it.","D"],
+    ["Take it to police to do what's right.","E"]
+  ]},
+  {q:"Pick a motto:", a:[
+    ["I put others first.","A"],
+    ["Fortune favors the bold.","B"],
+    ["Knowledge is power.","C"],
+    ["We’re stronger together.","D"],
+    ["Truth above all.","E"]
+  ]},
+  {q:"Big decision workflow?", a:[
+    ["Consider what's best for others.","A"],
+    ["Leap if it's exciting and meaningful.","B"],
+    ["Research every option thoroughly.","C"],
+    ["Choose the most harmonious path.","D"],
+    ["Weigh facts and be frank about tradeoffs.","E"]
+  ]},
+  {q:"Friend asks for help during your busiest week.", a:[
+    ["Rearrange to help anyway.","A"],
+    ["Help, but set firm boundaries.","B"],
+    ["Offer a step-by-step plan or resources.","C"],
+    ["Invite others to share the load.","D"],
+    ["Clarify what you realistically can do.","E"]
+  ]},
+  {q:"Conflict in a team:", a:[
+    ["Volunteer to take the unpleasant tasks.","A"],
+    ["Confront the issue head-on.","B"],
+    ["Analyze root causes and present data.","C"],
+    ["Mediate, ensure everyone feels heard.","D"],
+    ["Facilitate an honest, transparent debate.","E"]
+  ]},
+  {q:"Weekend plan sounds most appealing:", a:[
+    ["Community service / volunteering.","A"],
+    ["Rock climbing / action sport.","B"],
+    ["Museum + deep-dive reading.","C"],
+    ["Picnic with friends and music.","D"],
+    ["Debate night / mock trial.","E"]
+  ]},
+  {q:"Someone cuts the line.", a:[
+    ["Let it go; it's not worth fuss.","A"],
+    ["Call it out immediately.","B"],
+    ["Propose a fair system to prevent it.","C"],
+    ["De-escalate and keep peace.","D"],
+    ["Insist on fairness and speak up.","E"]
+  ]},
+  {q:"A risky but meaningful opportunity appears.", a:[
+    ["Let others take it if they need it more.","A"],
+    ["Take it—risks build character.","B"],
+    ["Run a quick cost–benefit analysis.","C"],
+    ["Discuss with friends to find consensus.","D"],
+    ["Decide after gathering candid opinions.","E"]
+  ]},
+  {q:"Your ideal leader:", a:[
+    ["Humble servant-leader.","A"],
+    ["Courageous and decisive.","B"],
+    ["Evidence-driven strategist.","C"],
+    ["Compassionate unifier.","D"],
+    ["Principled truth-teller.","E"]
+  ]},
+  {q:"What annoys you most?", a:[
+    ["Selfishness.","A"],
+    ["Cowardice.","B"],
+    ["Ignorance.","C"],
+    ["Cruelty.","D"],
+    ["Hypocrisy.","E"]
+  ]},
+  {q:"How do you handle fear?", a:[
+    ["Serve others to forget myself.","A"],
+    ["Face it and push through.","B"],
+    ["Study it to reduce uncertainty.","C"],
+    ["Lean on community support.","D"],
+    ["Name it clearly; own it.","E"]
+  ]},
+  {q:"A friend asks for honest feedback on a sensitive topic.", a:[
+    ["Protect their feelings; be gentle.","A"],
+    ["Be blunt; they can handle it.","B"],
+    ["Structure feedback with evidence.","C"],
+    ["Balance honesty with warmth.","D"],
+    ["Give the unvarnished truth respectfully.","E"]
+  ]},
+  {q:"You have 2 hours free.", a:[
+    ["Do chores for family/roommates.","A"],
+    ["Try a new physical challenge.","B"],
+    ["Take an online course/learn.","C"],
+    ["Call a friend who’s down.","D"],
+    ["Catch up on difficult conversations.","E"]
+  ]},
+  {q:"What do you value most in yourself?", a:[
+    ["Selflessness.","A"],
+    ["Courage.","B"],
+    ["Intellect.","C"],
+    ["Kindness.","D"],
+    ["Integrity.","E"]
+  ]},
+  {q:"Preferred news content:", a:[
+    ["Community impact stories.","A"],
+    ["Investigations into risks/conflicts.","B"],
+    ["Science/tech explainers.","C"],
+    ["Human-interest and culture.","D"],
+    ["Accountability journalism.","E"]
+  ]},
+  {q:"Group project role you naturally take:", a:[
+    ["Quietly do the unglamorous tasks.","A"],
+    ["Take point and drive decisions.","B"],
+    ["Researcher/analyst.","C"],
+    ["Facilitator to keep harmony.","D"],
+    ["Devil’s advocate to test ideas.","E"]
+  ]},
+  {q:"How do you respond to unfair rules?", a:[
+    ["Follow them to avoid harming others.","A"],
+    ["Challenge them openly.","B"],
+    ["Collect evidence and lobby change.","C"],
+    ["Build consensus for reform.","D"],
+    ["Expose the inconsistency publicly.","E"]
+  ]},
+  {q:"Ideal compliment:", a:[
+    ["You always think of others.","A"],
+    ["You’re fearless.","B"],
+    ["You’re insightful.","C"],
+    ["You make people feel safe.","D"],
+    ["You’re honest and fair.","E"]
+  ]},
+  {q:"When stressed, you:", a:[
+    ["Do something helpful for someone.","A"],
+    ["Work out or take a bold action.","B"],
+    ["Make a plan and study the issue.","C"],
+    ["Seek comfort with friends/music.","D"],
+    ["Talk it out frankly.","E"]
+  ]},
+  {q:"Pick a symbol:", a:[
+    ["Open hands.","A"],
+    ["Flame.","B"],
+    ["Eye/book.","C"],
+    ["Tree/leaf.","D"],
+    ["Scales.","E"]
+  ]},
+  {q:"You witness cheating that doesn’t affect you.", a:[
+    ["Stay out—avoid making it worse.","A"],
+    ["Confront the cheater.","B"],
+    ["Document, then report properly.","C"],
+    ["Encourage a restorative solution.","D"],
+    ["Report it clearly and transparently.","E"]
+  ]},
+  {q:"A friend wants to quit a safe job for a passion project.", a:[
+    ["Support them if it helps others.","A"],
+    ["Tell them to leap if they believe.","B"],
+    ["Ask for a plan and runway.","C"],
+    ["Check their support network.","D"],
+    ["Discuss risks frankly and fairly.","E"]
+  ]},
+  {q:"You prefer tasks that are:", a:[
+    ["Helpful to someone else.","A"],
+    ["Challenging and intense.","B"],
+    ["Analytical and precise.","C"],
+    ["Collaborative and social.","D"],
+    ["Clear-cut and principled.","E"]
+  ]},
+  {q:"In arguments, you usually:", a:[
+    ["Yield to maintain peace for others.","A"],
+    ["Hold ground firmly.","B"],
+    ["Use data and logic.","C"],
+    ["Find middle ground.","D"],
+    ["Focus on facts and inconsistencies.","E"]
+  ]},
+  {q:"Your desk looks:", a:[
+    ["Minimal—others use the space too.","A"],
+    ["Gear-ready—action oriented.","B"],
+    ["Organized with notes and charts.","C"],
+    ["Plants, photos, warm lighting.","D"],
+    ["Labeled folders, policies visible.","E"]
+  ]},
+  {q:"Volunteer choice:", a:[
+    ["Soup kitchen / care work.","A"],
+    ["Disaster response team.","B"],
+    ["Tutoring STEM / literacy.","C"],
+    ["Community garden / art day.","D"],
+    ["Legal aid / advocacy.","E"]
+  ]},
+  {q:"How do you learn best?", a:[
+    ["By serving and doing.","A"],
+    ["By trying and failing forward.","B"],
+    ["By reading and experimenting.","C"],
+    ["With people, stories, and empathy.","D"],
+    ["By debate and questioning.","E"]
+  ]},
+  {q:"You’re given public recognition.", a:[
+    ["Redirect credit to team.","A"],
+    ["Accept and set a bolder goal.","B"],
+    ["Reflect on what worked.","C"],
+    ["Celebrate together.","D"],
+    ["Thank them and state the facts.","E"]
+  ]},
+  {q:"Biggest red flag in others:", a:[
+    ["Self-centeredness.","A"],
+    ["Timidity in crisis.","B"],
+    ["Proud ignorance.","C"],
+    ["Unkindness.","D"],
+    ["Dishonesty.","E"]
+  ]},
+  {q:"If factions dissolved tomorrow, you’d…", a:[
+    ["Start a mutual-aid group.","A"],
+    ["Train a neighborhood safety team.","B"],
+    ["Build a community knowledge hub.","C"],
+    ["Host circles for healing.","D"],
+    ["Form a truth & oversight council.","E"]
+  ]}
+];
+
+function renderQuiz(){
+  const form = document.getElementById('quiz');
+  form.innerHTML = '';
+  QUESTIONS.forEach((item, idx) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const opts = item.a.map((opt, i)=>{
+      const [text, key] = opt;
+      const id = `q${idx}_opt${i}`;
+      return `
+        <label class="opt" for="${id}">
+          <input type="checkbox" name="q${idx}" id="${id}" value="${key}" data-faction="${factionByChoice[key]}">
+          <div>${text}</div>
+        </label>
+      `;
+    }).join('');
+    card.innerHTML = `<div class="q">Q${idx+1}. ${item.q}</div><div class="options">${opts}</div>`;
+    form.appendChild(card);
+  });
+
+  // Enforce max 2 selections per question
+  QUESTIONS.forEach((_, idx)=>{
+    const inputs = document.querySelectorAll(`input[name="q${idx}"]`);
+    inputs.forEach(inp => {
+      inp.addEventListener('change', () => {
+        const checked = Array.from(inputs).filter(i=>i.checked);
+        if (checked.length > 2){
+          inp.checked = false;
+          const helper = document.getElementById('helper');
+          helper.innerHTML = `<span class="warn">Max 2 selections per question. Your last click was ignored.</span>`;
+          setTimeout(()=>helper.textContent='', 2000);
+        }
+      });
+    });
+  });
+}
+
+function computeResults(){
+  const totals = { Abnegation:0, Dauntless:0, Erudite:0, Amity:0, Candor:0 };
+  let answered = 0;
+  for (let idx=0; idx<QUESTIONS.length; idx++){
+    const chosen = Array.from(document.querySelectorAll(`input[name="q${idx}"]:checked`));
+    if(chosen.length === 0){
+      alert(`Please answer question ${idx+1}.`);
+      return;
+    }
+    answered++;
+    const weight = 1 / chosen.length; // split 1 point across chosen options
+    chosen.forEach(ch => {
+      const f = ch.dataset.faction;
+      totals[f] += weight;
+    });
+  }
+  const sum = Object.values(totals).reduce((a,b)=>a+b,0); // should equal 30
+  const pct = {};
+  let maxF = null, maxVal = -1;
+  FACTIONS.forEach(f=>{
+    pct[f] = Math.round((totals[f]/sum)*1000)/10; // 1 decimal
+    if(pct[f] > maxVal){ maxVal = pct[f]; maxF = f; }
+  });
+  const threshold = Math.max(20, maxVal - 10);
+  const divergenceCount = FACTIONS.filter(f => pct[f] >= threshold).length;
+  showResults(pct, maxF, divergenceCount, threshold);
+}
+
+function showResults(pct, primary, divergenceCount, threshold){
+  const res = document.getElementById('results');
+  const bars = document.getElementById('bars');
+  const divNote = document.getElementById('divergence');
+  const primaryFaction = document.getElementById('primaryFaction');
+  res.style.display = 'block';
+  bars.innerHTML = '';
+
+  FACTIONS.forEach(f=>{
+    const row = document.createElement('div');
+    row.className = 'bar';
+    row.innerHTML = `
+      <div class="label">${f}</div>
+      <div class="track"><div class="fill" style="width:${pct[f]}%"></div></div>
+      <div class="pct">${pct[f].toFixed(1)}%</div>
+    `;
+    bars.appendChild(row);
+  });
+
+  divNote.innerHTML = `Divergence score: <b>${divergenceCount}</b> (factions at ≥ <b>${threshold.toFixed(1)}%</b>). Higher means you blend multiple faction values strongly.`;
+  primaryFaction.innerHTML = `Primary alignment: <b>${primary}</b>. Remember: this is a spectrum.`;
+  window.scrollTo({ top: res.offsetTop - 12, behavior: 'smooth' });
+}
+
+function resetQuiz(){
+  document.getElementById('quiz').reset?.();
+  document.getElementById('results').style.display = 'none';
+  document.querySelectorAll('input[type="checkbox"]').forEach(r=> r.checked = false);
+  document.getElementById('helper').textContent = '';
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  renderQuiz();
+  document.getElementById('submitBtn').addEventListener('click', computeResults);
+  document.getElementById('resetBtn').addEventListener('click', resetQuiz);
+});
+</script>
+</body>
+</html>
